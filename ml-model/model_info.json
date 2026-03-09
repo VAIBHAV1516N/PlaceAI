@@ -1,0 +1,19 @@
+{
+  "random_forest": {
+    "accuracy": 0.875
+  },
+  "logistic_regression": {
+    "accuracy": 0.935
+  },
+  "decision_tree": {
+    "accuracy": 0.84
+  },
+  "features": [
+    "cgpa",
+    "internships",
+    "communication_skills",
+    "technical_skills",
+    "aptitude_score",
+    "projects"
+  ]
+}
