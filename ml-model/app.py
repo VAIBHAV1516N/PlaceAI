@@ -8,40 +8,84 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# Load models and scaler
 MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# ── Safe model loading (won't crash if .pkl files missing) ──
 def load_model(filename):
     filepath = os.path.join(MODEL_DIR, filename)
+    if not os.path.exists(filepath):
+        return None
     with open(filepath, 'rb') as f:
         return pickle.load(f)
 
-rf_model = load_model('rf_model.pkl')
-lr_model = load_model('lr_model.pkl')
-dt_model = load_model('dt_model.pkl')
-scaler = load_model('scaler.pkl')
+def load_all_models():
+    rf  = load_model('rf_model.pkl')
+    lr  = load_model('lr_model.pkl')
+    dt  = load_model('dt_model.pkl')
+    sc  = load_model('scaler.pkl')
 
-with open(os.path.join(MODEL_DIR, 'model_info.json')) as f:
-    model_info = json.load(f)
+    info_path = os.path.join(MODEL_DIR, 'model_info.json')
+    info = {}
+    if os.path.exists(info_path):
+        with open(info_path) as f:
+            info = json.load(f)
 
-MODELS = {
-    'random_forest': rf_model,
-    'logistic_regression': lr_model,
-    'decision_tree': dt_model
-}
+    models = {}
+    if rf: models['random_forest']       = rf
+    if lr: models['logistic_regression'] = lr
+    if dt: models['decision_tree']       = dt
+
+    return models, sc, info
+
+MODELS, scaler, model_info = load_all_models()
+
+# ── Routes ───────────────────────────────────────────────────
+
+@app.route('/', methods=['GET'])
+def index():
+    loaded = list(MODELS.keys())
+    return jsonify({
+        'service': 'PlaceAI ML API',
+        'status': 'running',
+        'models_loaded': loaded,
+        'endpoints': ['/health', '/models', '/predict']
+    })
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'models_loaded': list(MODELS.keys())})
+    loaded = list(MODELS.keys())
+    return jsonify({
+        'status': 'ok' if loaded else 'degraded',
+        'models_loaded': loaded,
+        'scaler_loaded': scaler is not None
+    })
+
+@app.route('/models', methods=['GET'])
+def get_models():
+    result = []
+    for key, label in [
+        ('random_forest',       'Random Forest'),
+        ('logistic_regression', 'Logistic Regression'),
+        ('decision_tree',       'Decision Tree'),
+    ]:
+        if key in MODELS:
+            acc = round(model_info.get(key, {}).get('accuracy', 0) * 100, 2)
+            result.append({'name': key, 'label': label, 'accuracy': acc})
+    return jsonify({'models': result})
 
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        data = request.json
-        model_name = data.get('model', 'random_forest')
+        if not MODELS or scaler is None:
+            return jsonify({'error': 'Models not loaded. Check build logs — train_model.py may have failed.'}), 503
 
+        data = request.json
+        if not data:
+            return jsonify({'error': 'Request body must be JSON'}), 400
+
+        model_name = data.get('model', 'random_forest')
         if model_name not in MODELS:
-            return jsonify({'error': f'Model {model_name} not found'}), 400
+            return jsonify({'error': f'Model "{model_name}" not found. Available: {list(MODELS.keys())}'}), 400
 
         features = [
             float(data['cgpa']),
@@ -56,38 +100,30 @@ def predict():
         X_scaled = scaler.transform(X)
         model = MODELS[model_name]
 
-        prediction = int(model.predict(X_scaled)[0])
+        prediction  = int(model.predict(X_scaled)[0])
         probability = float(model.predict_proba(X_scaled)[0][1])
 
-        # Compute feature importances (only for tree-based models)
         importances = {}
         if hasattr(model, 'feature_importances_'):
-            feature_names = model_info['features']
+            feature_names = model_info.get('features', [
+                'cgpa', 'internships', 'communication_skills',
+                'technical_skills', 'aptitude_score', 'projects'
+            ])
             for name, imp in zip(feature_names, model.feature_importances_):
                 importances[name] = round(float(imp) * 100, 2)
 
         return jsonify({
-            'placed': bool(prediction),
-            'probability': round(probability * 100, 2),
-            'model_used': model_name,
-            'model_accuracy': round(model_info[model_name]['accuracy'] * 100, 2),
+            'placed':              bool(prediction),
+            'probability':         round(probability * 100, 2),
+            'model_used':          model_name,
+            'model_accuracy':      round(model_info.get(model_name, {}).get('accuracy', 0) * 100, 2),
             'feature_importances': importances
         })
 
     except KeyError as e:
-        return jsonify({'error': f'Missing field: {str(e)}'}), 400
+        return jsonify({'error': f'Missing required field: {str(e)}'}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.route('/models', methods=['GET'])
-def get_models():
-    return jsonify({
-        'models': [
-            {'name': 'random_forest', 'label': 'Random Forest', 'accuracy': round(model_info['random_forest']['accuracy'] * 100, 2)},
-            {'name': 'logistic_regression', 'label': 'Logistic Regression', 'accuracy': round(model_info['logistic_regression']['accuracy'] * 100, 2)},
-            {'name': 'decision_tree', 'label': 'Decision Tree', 'accuracy': round(model_info['decision_tree']['accuracy'] * 100, 2)},
-        ]
-    })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)
