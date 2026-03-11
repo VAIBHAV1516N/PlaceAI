@@ -1,0 +1,25 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+
+# Jupyter
+.ipynb_checkpoints
+
+# System files
+.DS_Store
+
+# Dataset (optional - agar bada hai)
+placement_dataset.csv
+
+# Model files (optional)
+*.pkl
