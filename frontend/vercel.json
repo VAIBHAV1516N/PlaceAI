@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "CI= npm run build",
-  "installCommand": "npm install --legacy-peer-deps",
+  "installCommand": "npm install --legacy-peer-deps && chmod +x node_modules/.bin/react-scripts",
+  "buildCommand": "CI= react-scripts build",
   "outputDirectory": "build",
   "framework": "create-react-app"
 }
