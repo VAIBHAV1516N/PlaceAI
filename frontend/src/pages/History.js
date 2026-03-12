@@ -2,7 +2,7 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-const API = "http://localhost:5000/api";
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 const M_LABELS = {
   random_forest: "Random Forest",
   logistic_regression: "Logistic Regression",
